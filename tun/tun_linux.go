@@ -548,25 +548,25 @@ func CreateTUN(name string, mtu int) (Device, error) {
 		if os.IsNotExist(err) {
 			return nil, fmt.Errorf("CreateTUN(%q) failed; %s does not exist", name, cloneDevicePath)
 		}
-		return nil, err
+		return nil, fmt.Errorf("error opening unix file: %w", err)
 	}
 
 	ifr, err := unix.NewIfreq(name)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error creating ifreq: %w", err)
 	}
 	// IFF_VNET_HDR enables the "tun status hack" via routineHackListener()
 	// where a null write will return EINVAL indicating the TUN is up.
 	ifr.SetUint16(unix.IFF_TUN | unix.IFF_NO_PI | unix.IFF_VNET_HDR)
 	err = unix.IoctlIfreq(nfd, unix.TUNSETIFF, ifr)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error performing ioctl: %w", err)
 	}
 
 	err = unix.SetNonblock(nfd, true)
 	if err != nil {
 		unix.Close(nfd)
-		return nil, err
+		return nil, fmt.Errorf("error setting nonblock: %w", err)
 	}
 
 	// Note that the above -- open,ioctl,nonblock -- must happen prior to handing it to netpoll as below this line.
@@ -589,28 +589,28 @@ func CreateTUNFromFile(file *os.File, mtu int) (Device, error) {
 
 	name, err := tun.Name()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error getting tun name: %w", err)
 	}
 
 	err = tun.initFromFlags(name)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error initializing tun device: %w", err)
 	}
 
 	// start event listener
 	tun.index, err = getIFIndex(name)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error getting ifindex: %w", err)
 	}
 
 	tun.netlinkSock, err = createNetlinkSocket()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error createing netlink socket: %w", err)
 	}
 	tun.netlinkCancel, err = rwcancel.NewRWCancel(tun.netlinkSock)
 	if err != nil {
 		unix.Close(tun.netlinkSock)
-		return nil, err
+		return nil, fmt.Errorf("error error creating cancel chan: %w", err)
 	}
 
 	tun.hackListenerClosed.Lock()
@@ -620,7 +620,7 @@ func CreateTUNFromFile(file *os.File, mtu int) (Device, error) {
 	err = tun.setMTU(mtu)
 	if err != nil {
 		unix.Close(tun.netlinkSock)
-		return nil, err
+		return nil, fmt.Errorf("error setting mtu: %w", err)
 	}
 
 	return tun, nil
